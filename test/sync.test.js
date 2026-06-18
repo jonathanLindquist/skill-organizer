@@ -54,6 +54,80 @@ test("provider flags are loaded from config", async (t) => {
   );
 });
 
+test("--all-providers syncs every configured provider", async (t) => {
+  const homeDir = await tempHome(t);
+  const output = createWritable();
+  const providerConfigPath = await writeProviderConfig(homeDir, twoProviders());
+
+  await writeSkill(path.join(homeDir, ".agents", "skills"), "tdd", "source skill");
+
+  const exitCode = await runCli(["--all-providers"], {
+    env: { HOME: homeDir },
+    providerConfigPath,
+    stdout: output,
+    stderr: createWritable(),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(output.text, /Claude Code synced/);
+  assert.match(output.text, /Custom Agent synced/);
+  assert.equal(
+    await fs.readlink(path.join(homeDir, ".claude", "skills", "tdd")),
+    path.join(homeDir, ".agents", "skills", "tdd"),
+  );
+  assert.equal(
+    await fs.readlink(path.join(homeDir, ".custom-agent", "skills", "tdd")),
+    path.join(homeDir, ".agents", "skills", "tdd"),
+  );
+});
+
+test("--all-providers is idempotent with specific provider flags", async (t) => {
+  const homeDir = await tempHome(t);
+  const output = createWritable();
+  const providerConfigPath = await writeProviderConfig(homeDir, twoProviders());
+
+  await writeSkill(path.join(homeDir, ".agents", "skills"), "tdd", "source skill");
+
+  const exitCode = await runCli(["--all-providers", "--claude-code"], {
+    env: { HOME: homeDir },
+    providerConfigPath,
+    stdout: output,
+    stderr: createWritable(),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(countMatches(output.text, "Claude Code synced"), 1);
+  assert.equal(countMatches(output.text, "Custom Agent synced"), 1);
+  assert.equal(
+    await fs.readlink(path.join(homeDir, ".claude", "skills", "tdd")),
+    path.join(homeDir, ".agents", "skills", "tdd"),
+  );
+  assert.equal(
+    await fs.readlink(path.join(homeDir, ".custom-agent", "skills", "tdd")),
+    path.join(homeDir, ".agents", "skills", "tdd"),
+  );
+});
+
+test("--dry-run --all-providers reports actions without changing providers", async (t) => {
+  const homeDir = await tempHome(t);
+  const output = createWritable();
+  const providerConfigPath = await writeProviderConfig(homeDir, twoProviders());
+
+  await writeSkill(path.join(homeDir, ".agents", "skills"), "tdd", "source skill");
+
+  const exitCode = await runCli(["--dry-run", "--all-providers"], {
+    env: { HOME: homeDir },
+    providerConfigPath,
+    stdout: output,
+    stderr: createWritable(),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(countMatches(output.text, "dry run"), 2);
+  await assert.rejects(fs.stat(path.join(homeDir, ".claude")), { code: "ENOENT" });
+  await assert.rejects(fs.stat(path.join(homeDir, ".custom-agent")), { code: "ENOENT" });
+});
+
 test("links source skills that do not exist in the destination", async (t) => {
   const workspace = await tempHome(t);
   const sourceDir = path.join(workspace, ".agents", "skills");
@@ -75,7 +149,7 @@ test("links source skills that do not exist in the destination", async (t) => {
   assert.equal(await fs.readlink(linkPath), path.join(sourceDir, "tdd"));
 });
 
-test("does not replace a destination skill that already exists", async (t) => {
+test("replaces a destination skill clash with a source symlink", async (t) => {
   const workspace = await tempHome(t);
   const sourceDir = path.join(workspace, ".agents", "skills");
   const destinationDir = path.join(workspace, ".claude", "skills");
@@ -88,17 +162,16 @@ test("does not replace a destination skill that already exists", async (t) => {
     provider: provider(destinationDir),
   });
 
-  assert.deepEqual(result.actions.map((action) => action.type), ["skipped"]);
+  assert.deepEqual(result.actions.map((action) => action.type), ["replaced"]);
 
   const destinationStat = await fs.lstat(path.join(destinationDir, "tdd"));
-  const destinationBody = await fs.readFile(path.join(destinationDir, "tdd", "SKILL.md"), "utf8");
 
-  assert.equal(destinationStat.isDirectory(), true);
-  assert.equal(destinationStat.isSymbolicLink(), false);
-  assert.equal(destinationBody, "local destination skill\n");
+  assert.equal(destinationStat.isSymbolicLink(), true);
+  assert.equal(await fs.readlink(path.join(destinationDir, "tdd")), path.join(sourceDir, "tdd"));
+  assert.equal(await fs.readFile(path.join(sourceDir, "tdd", "SKILL.md"), "utf8"), "source skill\n");
 });
 
-test("does not link over a non-skill destination entry", async (t) => {
+test("replaces a non-skill destination clash with a source symlink", async (t) => {
   const workspace = await tempHome(t);
   const sourceDir = path.join(workspace, ".agents", "skills");
   const destinationDir = path.join(workspace, ".claude", "skills");
@@ -112,11 +185,11 @@ test("does not link over a non-skill destination entry", async (t) => {
     provider: provider(destinationDir),
   });
 
-  assert.deepEqual(result.actions.map((action) => action.type), ["skipped"]);
-  assert.equal(await fs.readFile(path.join(destinationDir, "tdd"), "utf8"), "destination file\n");
+  assert.deepEqual(result.actions.map((action) => action.type), ["replaced"]);
+  assert.equal(await fs.readlink(path.join(destinationDir, "tdd")), path.join(sourceDir, "tdd"));
 });
 
-test("does not move a destination-only skill over a non-skill source entry", async (t) => {
+test("removes a destination-only skill that clashes with a non-skill source entry", async (t) => {
   const workspace = await tempHome(t);
   const sourceDir = path.join(workspace, ".agents", "skills");
   const destinationDir = path.join(workspace, ".claude", "skills");
@@ -130,9 +203,9 @@ test("does not move a destination-only skill over a non-skill source entry", asy
     provider: provider(destinationDir),
   });
 
-  assert.deepEqual(result.actions.map((action) => action.type), ["skipped"]);
+  assert.deepEqual(result.actions.map((action) => action.type), ["removed"]);
   assert.equal(await fs.readFile(path.join(sourceDir, "qa"), "utf8"), "source file\n");
-  assert.equal(await fs.readFile(path.join(destinationDir, "qa", "SKILL.md"), "utf8"), "destination-only skill\n");
+  await assert.rejects(fs.stat(path.join(destinationDir, "qa")), { code: "ENOENT" });
 });
 
 test("moves destination-only skills into source and symlinks them back", async (t) => {
@@ -157,7 +230,26 @@ test("moves destination-only skills into source and symlinks them back", async (
   assert.equal(await fs.readlink(path.join(destinationDir, "qa")), path.join(sourceDir, "qa"));
 });
 
-test("leaves an existing destination symlink in place when the source skill exists", async (t) => {
+test("leaves an existing source symlink in place when the source skill exists", async (t) => {
+  const workspace = await tempHome(t);
+  const sourceDir = path.join(workspace, ".agents", "skills");
+  const destinationDir = path.join(workspace, ".claude", "skills");
+
+  await writeSkill(sourceDir, "triage", "source skill");
+  await fs.mkdir(destinationDir, { recursive: true });
+  await fs.symlink(path.join(sourceDir, "triage"), path.join(destinationDir, "triage"), "dir");
+
+  const result = await syncProvider({
+    sourceDir,
+    provider: provider(destinationDir),
+  });
+
+  assert.deepEqual(result.actions.map((action) => action.type), ["skipped"]);
+  assert.equal(await fs.readlink(path.join(destinationDir, "triage")), path.join(sourceDir, "triage"));
+  assert.equal(await fs.readFile(path.join(sourceDir, "triage", "SKILL.md"), "utf8"), "source skill\n");
+});
+
+test("replaces an existing destination symlink that points away from the source", async (t) => {
   const workspace = await tempHome(t);
   const sourceDir = path.join(workspace, ".agents", "skills");
   const destinationDir = path.join(workspace, ".claude", "skills");
@@ -173,9 +265,9 @@ test("leaves an existing destination symlink in place when the source skill exis
     provider: provider(destinationDir),
   });
 
-  assert.deepEqual(result.actions.map((action) => action.type), ["skipped"]);
-  assert.equal(await fs.readlink(path.join(destinationDir, "triage")), path.join(externalDir, "triage"));
-  assert.equal(await fs.readFile(path.join(sourceDir, "triage", "SKILL.md"), "utf8"), "source skill\n");
+  assert.deepEqual(result.actions.map((action) => action.type), ["replaced"]);
+  assert.equal(await fs.readlink(path.join(destinationDir, "triage")), path.join(sourceDir, "triage"));
+  assert.equal(await fs.readFile(path.join(externalDir, "triage", "SKILL.md"), "utf8"), "external target\n");
 });
 
 test("imports the target directory for destination-only symlinked skills", async (t) => {
@@ -202,6 +294,27 @@ test("imports the target directory for destination-only symlinked skills", async
   assert.equal(destinationStat.isSymbolicLink(), true);
   assert.equal(await fs.readlink(path.join(destinationDir, "triage")), path.join(sourceDir, "triage"));
   await assert.rejects(fs.stat(path.join(externalDir, "triage")), { code: "ENOENT" });
+});
+
+test("--all-providers imports once, then source truth replaces same-name provider-only clashes", async (t) => {
+  const homeDir = await tempHome(t);
+  const output = createWritable();
+  const providerConfigPath = await writeProviderConfig(homeDir, twoProviders());
+
+  await writeSkill(path.join(homeDir, ".claude", "skills"), "qa", "claude source");
+  await writeSkill(path.join(homeDir, ".custom-agent", "skills"), "qa", "custom clash");
+
+  const exitCode = await runCli(["--all-providers"], {
+    env: { HOME: homeDir },
+    providerConfigPath,
+    stdout: output,
+    stderr: createWritable(),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(await fs.readFile(path.join(homeDir, ".agents", "skills", "qa", "SKILL.md"), "utf8"), "claude source\n");
+  assert.equal(await fs.readlink(path.join(homeDir, ".claude", "skills", "qa")), path.join(homeDir, ".agents", "skills", "qa"));
+  assert.equal(await fs.readlink(path.join(homeDir, ".custom-agent", "skills", "qa")), path.join(homeDir, ".agents", "skills", "qa"));
 });
 
 test("dry-run reports link actions without creating directories or links", async (t) => {
@@ -305,6 +418,18 @@ function defaultProviders() {
   ];
 }
 
+function twoProviders() {
+  return [
+    ...defaultProviders(),
+    {
+      id: "custom-agent",
+      flag: "--custom-agent",
+      label: "Custom Agent",
+      skillsDir: "~/.custom-agent/skills",
+    },
+  ];
+}
+
 function createWritable() {
   return {
     text: "",
@@ -312,4 +437,8 @@ function createWritable() {
       this.text += chunk;
     },
   };
+}
+
+function countMatches(text, pattern) {
+  return text.split(pattern).length - 1;
 }

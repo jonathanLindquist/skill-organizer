@@ -1,6 +1,8 @@
 import { getHomeDir, loadProviders, providerWithResolvedPath, sourceSkillsDir } from "./providers.js";
 import { syncProviders } from "./sync.js";
 
+const ALL_PROVIDERS_FLAG = "--all-providers";
+
 export async function runCli(argv, { env = process.env, stdout = process.stdout, stderr = process.stderr, providerConfigPath } = {}) {
   const providers = await loadProviders(providerConfigPath);
   const parsed = parseArgs(argv, providers);
@@ -19,14 +21,17 @@ export async function runCli(argv, { env = process.env, stdout = process.stdout,
     return 1;
   }
 
-  if (parsed.selectedProviderIds.length === 0) {
+  if (!parsed.allProviders && parsed.selectedProviderIds.length === 0) {
     stdout.write("No provider flags selected; nothing to sync.\n");
     return 0;
   }
 
   const homeDir = getHomeDir(env);
+  const selectedProviderIds = parsed.allProviders
+    ? providers.map((provider) => provider.id)
+    : parsed.selectedProviderIds;
   const selectedProviders = providers
-    .filter((provider) => parsed.selectedProviderIds.includes(provider.id))
+    .filter((provider) => selectedProviderIds.includes(provider.id))
     .map((provider) => providerWithResolvedPath(provider, homeDir));
 
   const results = await syncProviders({
@@ -45,12 +50,18 @@ export async function runCli(argv, { env = process.env, stdout = process.stdout,
 function parseArgs(argv, providers) {
   const selectedProviderIds = [];
   const errors = [];
+  let allProviders = false;
   let dryRun = false;
   let help = false;
 
   for (const arg of argv) {
     if (arg === "--help" || arg === "-h") {
       help = true;
+      continue;
+    }
+
+    if (arg === ALL_PROVIDERS_FLAG) {
+      allProviders = true;
       continue;
     }
 
@@ -70,6 +81,7 @@ function parseArgs(argv, providers) {
   }
 
   return {
+    allProviders,
     dryRun,
     errors,
     help,
@@ -81,7 +93,9 @@ function writeProviderSummary(stdout, result) {
   const counts = countActions(result.actions);
   const mode = result.dryRun ? "dry run" : "synced";
 
-  stdout.write(`${result.provider.label} ${mode}: ${counts.imported} imported, ${counts.linked} linked, ${counts.skipped} skipped.\n`);
+  stdout.write(
+    `${result.provider.label} ${mode}: ${counts.imported} imported, ${counts.linked} linked, ${counts.replaced} replaced, ${counts.removed} removed, ${counts.skipped} skipped.\n`,
+  );
 
   for (const action of result.actions) {
     if (action.type === "imported") {
@@ -91,6 +105,16 @@ function writeProviderSummary(stdout, result) {
 
     if (action.type === "linked") {
       stdout.write(`  linked ${action.skill}: ${action.to} -> ${action.from}\n`);
+      continue;
+    }
+
+    if (action.type === "replaced") {
+      stdout.write(`  replaced ${action.skill}: ${action.to} -> ${action.from}\n`);
+      continue;
+    }
+
+    if (action.type === "removed") {
+      stdout.write(`  removed ${action.skill}: ${action.path} (${action.reason})\n`);
       continue;
     }
 
@@ -104,6 +128,8 @@ function countActions(actions) {
   return {
     imported: actions.filter((action) => action.type === "imported").length,
     linked: actions.filter((action) => action.type === "linked").length,
+    replaced: actions.filter((action) => action.type === "replaced").length,
+    removed: actions.filter((action) => action.type === "removed").length,
     skipped: actions.filter((action) => action.type === "skipped").length,
   };
 }
@@ -118,6 +144,7 @@ function helpText(providers) {
 By default, skill-organizer does nothing. Pass one provider flag for each target you want to sync.
 
 Provider flags:
+  ${ALL_PROVIDERS_FLAG.padEnd(18)} sync every configured provider
 ${providerFlags}
 
 Options:

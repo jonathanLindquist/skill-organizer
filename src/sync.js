@@ -21,6 +21,7 @@ export async function syncProvider({ sourceDir, provider, dryRun = false }) {
   const sourceEntries = await readEntries(sourceDir);
   const destinationEntries = await readEntries(destinationDir);
   const sourceNames = new Set(sourceEntries.skills.map((entry) => entry.name));
+  const sourceAllNames = new Set(sourceEntries.allNames);
   const destinationNames = new Set(destinationEntries.allNames);
   const importedNames = new Set();
 
@@ -32,12 +33,16 @@ export async function syncProvider({ sourceDir, provider, dryRun = false }) {
     const sourcePath = path.join(sourceDir, destinationEntry.name);
     const destinationPath = path.join(destinationDir, destinationEntry.name);
 
-    if (sourceEntries.allNames.has(destinationEntry.name)) {
+    if (sourceAllNames.has(destinationEntry.name)) {
+      if (!dryRun) {
+        await removeEntry(destinationPath);
+      }
+
       actions.push({
-        type: "skipped",
+        type: "removed",
         skill: destinationEntry.name,
         reason: "source path already exists",
-        path: sourcePath,
+        path: destinationPath,
       });
       continue;
     }
@@ -48,7 +53,7 @@ export async function syncProvider({ sourceDir, provider, dryRun = false }) {
     }
 
     sourceNames.add(destinationEntry.name);
-    sourceEntries.allNames.add(destinationEntry.name);
+    sourceAllNames.add(destinationEntry.name);
     importedNames.add(destinationEntry.name);
     actions.push({
       type: "imported",
@@ -67,11 +72,25 @@ export async function syncProvider({ sourceDir, provider, dryRun = false }) {
     const destinationPath = path.join(destinationDir, sourceName);
 
     if (destinationNames.has(sourceName)) {
+      if (await isSymlinkToSource(destinationPath, sourcePath)) {
+        actions.push({
+          type: "skipped",
+          skill: sourceName,
+          reason: "destination already links to source",
+          path: destinationPath,
+        });
+        continue;
+      }
+
+      if (!dryRun) {
+        await replaceWithSourceLink(sourcePath, destinationPath);
+      }
+
       actions.push({
-        type: "skipped",
+        type: "replaced",
         skill: sourceName,
-        reason: "destination already exists",
-        path: destinationPath,
+        from: sourcePath,
+        to: destinationPath,
       });
       continue;
     }
@@ -171,6 +190,39 @@ async function moveEntry(fromPath, toPath) {
       recursive: true,
       force: true,
     });
+  }
+}
+
+async function replaceWithSourceLink(sourcePath, destinationPath) {
+  await removeEntry(destinationPath);
+  await linkSkill(sourcePath, destinationPath);
+}
+
+async function removeEntry(entryPath) {
+  await fs.rm(entryPath, {
+    recursive: true,
+    force: true,
+  });
+}
+
+async function isSymlinkToSource(destinationPath, sourcePath) {
+  try {
+    const destinationStat = await fs.lstat(destinationPath);
+
+    if (!destinationStat.isSymbolicLink()) {
+      return false;
+    }
+
+    const linkTarget = await fs.readlink(destinationPath);
+    const resolvedTarget = path.resolve(path.dirname(destinationPath), linkTarget);
+
+    return resolvedTarget === sourcePath;
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "EINVAL") {
+      return false;
+    }
+
+    throw error;
   }
 }
 

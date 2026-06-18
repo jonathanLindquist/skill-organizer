@@ -6,15 +6,17 @@ The default command intentionally does nothing. You must pass a provider flag fo
 
 ```bash
 skill-organizer --claude-code
+skill-organizer --all-providers
 ```
 
 ## Behavior
 
 For each selected provider:
 
-- source skills in `~/.agents/skills` are symlinked into the provider destination only when that destination skill does not already exist
-- existing destination skills with matching source names are left untouched
+- source skills in `~/.agents/skills` are symlinked into the provider destination
+- existing destination entries with matching source skill names are replaced with symlinks to the source skill
 - destination-only skills are moved into `~/.agents/skills`, then symlinked back to the original provider location
+- destination-only skills that clash with non-skill source entries are removed from the provider destination
 - the entire provider `skills` directory is never symlinked or replaced
 
 Claude Code is the first supported provider:
@@ -32,6 +34,7 @@ npm run lint
 node bin/skill-organizer.js --help
 node bin/skill-organizer.js --dry-run --claude-code
 node bin/skill-organizer.js --claude-code
+node bin/skill-organizer.js --all-providers
 ```
 
 ## Adding Providers

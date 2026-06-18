@@ -36,15 +36,25 @@ node bin/skill-organizer.js --claude-code
 
 ## Adding Providers
 
-Add a provider entry in `src/providers.js`:
+Add a provider entry in `providers.json`:
 
-```js
+```json
 {
-  id: "new-provider",
-  flag: "--new-provider",
-  label: "New Provider",
-  defaultSkillsDir: "~/.new-provider/skills",
+  "providers": [
+    {
+      "id": "claude-code",
+      "flag": "--claude-code",
+      "label": "Claude Code",
+      "skillsDir": "~/.claude/skills"
+    },
+    {
+      "id": "new-provider",
+      "flag": "--new-provider",
+      "label": "New Provider",
+      "skillsDir": "~/.new-provider/skills"
+    }
+  ]
 }
 ```
 
-The sync engine operates on resolved provider definitions, so new providers do not need provider-specific sync logic unless their filesystem model is different.
+The CLI loads provider flags from `providers.json` at startup, so updating that file is enough for providers that use the same per-skill directory model.

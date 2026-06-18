@@ -1,11 +1,12 @@
-import { PROVIDERS, getHomeDir, providerWithResolvedPath, sourceSkillsDir } from "./providers.js";
+import { getHomeDir, loadProviders, providerWithResolvedPath, sourceSkillsDir } from "./providers.js";
 import { syncProviders } from "./sync.js";
 
-export async function runCli(argv, { env = process.env, stdout = process.stdout, stderr = process.stderr } = {}) {
-  const parsed = parseArgs(argv);
+export async function runCli(argv, { env = process.env, stdout = process.stdout, stderr = process.stderr, providerConfigPath } = {}) {
+  const providers = await loadProviders(providerConfigPath);
+  const parsed = parseArgs(argv, providers);
 
   if (parsed.help) {
-    stdout.write(helpText());
+    stdout.write(helpText(providers));
     return 0;
   }
 
@@ -14,7 +15,7 @@ export async function runCli(argv, { env = process.env, stdout = process.stdout,
       stderr.write(`${error}\n`);
     }
     stderr.write("\n");
-    stderr.write(helpText());
+    stderr.write(helpText(providers));
     return 1;
   }
 
@@ -24,7 +25,7 @@ export async function runCli(argv, { env = process.env, stdout = process.stdout,
   }
 
   const homeDir = getHomeDir(env);
-  const selectedProviders = PROVIDERS
+  const selectedProviders = providers
     .filter((provider) => parsed.selectedProviderIds.includes(provider.id))
     .map((provider) => providerWithResolvedPath(provider, homeDir));
 
@@ -41,7 +42,7 @@ export async function runCli(argv, { env = process.env, stdout = process.stdout,
   return 0;
 }
 
-function parseArgs(argv) {
+function parseArgs(argv, providers) {
   const selectedProviderIds = [];
   const errors = [];
   let dryRun = false;
@@ -58,7 +59,7 @@ function parseArgs(argv) {
       continue;
     }
 
-    const provider = PROVIDERS.find((candidate) => candidate.flag === arg);
+    const provider = providers.find((candidate) => candidate.flag === arg);
 
     if (provider) {
       selectedProviderIds.push(provider.id);
@@ -107,9 +108,9 @@ function countActions(actions) {
   };
 }
 
-function helpText() {
-  const providerFlags = PROVIDERS
-    .map((provider) => `  ${provider.flag.padEnd(18)} sync ${provider.label} skills at ${provider.defaultSkillsDir}`)
+function helpText(providers) {
+  const providerFlags = providers
+    .map((provider) => `  ${provider.flag.padEnd(18)} sync ${provider.label} skills at ${provider.skillsDir}`)
     .join("\n");
 
   return `Usage: skill-organizer [provider flags] [options]

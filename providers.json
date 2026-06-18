@@ -1,0 +1,10 @@
+{
+  "providers": [
+    {
+      "id": "claude-code",
+      "flag": "--claude-code",
+      "label": "Claude Code",
+      "skillsDir": "~/.claude/skills"
+    }
+  ]
+}

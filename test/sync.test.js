@@ -13,6 +13,7 @@ test("running without provider flags does nothing", async () => {
 
   const exitCode = await runCli([], {
     env: { HOME: homeDir },
+    providerConfigPath: await writeProviderConfig(homeDir),
     stdout: output,
     stderr: createWritable(),
   });
@@ -21,6 +22,35 @@ test("running without provider flags does nothing", async () => {
   assert.match(output.text, /nothing to sync/);
   await assert.rejects(fs.stat(path.join(homeDir, ".agents")), { code: "ENOENT" });
   await assert.rejects(fs.stat(path.join(homeDir, ".claude")), { code: "ENOENT" });
+});
+
+test("provider flags are loaded from config", async () => {
+  const homeDir = await tempHome();
+  const output = createWritable();
+  const providerConfigPath = await writeProviderConfig(homeDir, [
+    {
+      id: "custom-agent",
+      flag: "--custom-agent",
+      label: "Custom Agent",
+      skillsDir: "~/.custom-agent/skills",
+    },
+  ]);
+
+  await writeSkill(path.join(homeDir, ".agents", "skills"), "tdd", "source skill");
+
+  const exitCode = await runCli(["--custom-agent"], {
+    env: { HOME: homeDir },
+    providerConfigPath,
+    stdout: output,
+    stderr: createWritable(),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(output.text, /Custom Agent synced/);
+  assert.equal(
+    await fs.readlink(path.join(homeDir, ".custom-agent", "skills", "tdd")),
+    path.join(homeDir, ".agents", "skills", "tdd"),
+  );
 });
 
 test("links source skills that do not exist in the destination", async () => {
@@ -167,6 +197,28 @@ function provider(destinationDir) {
     label: "Test Provider",
     skillsDir: destinationDir,
   };
+}
+
+async function writeProviderConfig(homeDir, providers = defaultProviders()) {
+  const configPath = path.join(homeDir, "providers.json");
+
+  await fs.writeFile(
+    configPath,
+    `${JSON.stringify({ providers }, null, 2)}\n`,
+  );
+
+  return configPath;
+}
+
+function defaultProviders() {
+  return [
+    {
+      id: "claude-code",
+      flag: "--claude-code",
+      label: "Claude Code",
+      skillsDir: "~/.claude/skills",
+    },
+  ];
 }
 
 function createWritable() {

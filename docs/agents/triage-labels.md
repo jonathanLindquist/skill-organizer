@@ -6,8 +6,8 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 | -------------------------- | -------------------- | ------------ | ---------------------------------------- |
 | `needs-triage`             | `#needs-triage`      | Amber        | Maintainer needs to evaluate this issue  |
 | `needs-info`               | `#needs-info`        | Blue         | Waiting on reporter for more information |
-| `ready-for-agent`          | `#ready-for-agent`   | Green        | Fully specified, ready for an AFK agent  |
-| `ready-for-human`          | `#ready-for-human`   | Purple       | Requires human implementation            |
+| `ready-for-agent`          | `#ready-for-agent`   | Violet       | Fully specified, ready for an AFK agent  |
+| `ready-for-human`          | `#ready-for-human`   | Pink         | Requires human implementation            |
 | `wontfix`                  | `#wontfix`           | Red          | Will not be actioned                     |
 
 When a skill mentions a role, use the corresponding Obsidian tag from this table. In the Obsidian Kanban board, record the tag inside the ticket's `Implementation Data` section.

@@ -29,11 +29,19 @@ Each ticket should include:
 - `## Description`
 - relevant tags such as `#skill-organizer`, `#cli`, `#sync`, `#tests`, or `#2026`
 - `## Implementation Data`
-- a triage label line using the color markup from `docs/agents/triage-labels.md`
+- a triage tag line using one of the tags from `docs/agents/triage-labels.md`
 - `## TODO Checklist`
 - `## Definition of Done`
 
 For implementation work, record concrete evidence in `Implementation Data`: commit SHAs, changed files, commands run, relevant paths, decisions made, and verification results.
+
+Use triage labels as Obsidian tags, for example:
+
+```markdown
+- Triage: #ready-for-agent
+```
+
+The Kanban plugin's vault-level `tag-colors` settings define the visual colors for these tags across all Kanban boards in the vault.
 
 ## Fetching Tickets
 

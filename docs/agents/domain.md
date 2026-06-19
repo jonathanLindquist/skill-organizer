@@ -19,11 +19,11 @@ Expected single-context layout:
 
 ```text
 /
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-example-decision.md
-│   └── 0002-example-decision.md
-└── src/
+|-- CONTEXT.md
+|-- docs/adr/
+|   |-- 0001-example-decision.md
+|   `-- 0002-example-decision.md
+`-- src/
 ```
 
 ## Use The Project Vocabulary

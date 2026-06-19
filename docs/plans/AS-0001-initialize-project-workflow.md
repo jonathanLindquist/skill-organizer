@@ -1,8 +1,8 @@
-# SO-0001 Initialize Project Workflow
+# AS-0001 Initialize Project Workflow
 
-- Ticket: SO-0001
-- Board: ~/obsidian_notes/pocock-skills-vault/projects/utilities/skill-organizer/Skill Organizer Kanban.md
-- Card: SO-0001 Initialize Project Workflow
+- Ticket: AS-0001
+- Board: ~/obsidian_notes/pocock-skills-vault/projects/utilities/agent-sync/Agent Sync Kanban.md
+- Card: AS-0001 Initialize Project Workflow
 - Created: 2026-06-19
 
 ## Summary

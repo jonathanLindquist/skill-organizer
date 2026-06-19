@@ -1,0 +1,42 @@
+{
+  "artifacts": [
+    {
+      "id": "skills",
+      "label": "skills",
+      "type": "skills",
+      "default": true,
+      "sourceDir": "~/.agents/skills",
+      "providers": [
+        {
+          "id": "claude-code",
+          "flag": "--claude-code",
+          "label": "Claude Code",
+          "destinationDir": "~/.claude/skills"
+        }
+      ]
+    },
+    {
+      "id": "global-instructions",
+      "label": "global instructions",
+      "type": "file",
+      "sourceFile": "~/.agents/AGENTS.md",
+      "providers": [
+        {
+          "id": "codex",
+          "flag": "--codex",
+          "label": "Codex",
+          "destinationFile": "~/.codex/AGENTS.md",
+          "mode": "symlink"
+        },
+        {
+          "id": "claude-code",
+          "flag": "--claude-code",
+          "label": "Claude Code",
+          "destinationFile": "~/.claude/CLAUDE.md",
+          "mode": "template",
+          "template": "@~/.agents/AGENTS.md\n"
+        }
+      ]
+    }
+  ]
+}

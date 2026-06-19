@@ -23,6 +23,8 @@ node "$HOME/.agents/skills/setup-project-workflow/scripts/new_project_ticket.mjs
   --tag optional-topic
 ```
 
+Before creating tickets, copy `.env.example` to `.env` if needed and set `PROJECT_WORKFLOW_OBSIDIAN_VAULT` to the Obsidian vault root.
+
 Only `--title` is required. Defaults:
 
 - `--project-root`: current directory
@@ -34,7 +36,7 @@ The utility:
 
 - reconciles `docs/agents/ticket-sequence.json` against existing board cards and `docs/plans/`
 - blocks exact duplicate titles unless `--allow-duplicate` is passed
-- allocates the next `SO-0000` style ID
+- allocates the next `AS-0000` style ID
 - appends the new card to the bottom of the target lane
 - creates the linked plan file under `docs/plans/`
 - advances `docs/agents/ticket-sequence.json`

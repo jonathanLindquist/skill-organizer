@@ -4,7 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 
 import { runCli } from "../src/cli.js";
-import { syncProvider } from "../src/sync.js";
+import { syncFileProvider, syncProvider } from "../src/sync.js";
 
 const TEST_TMP_ROOT = path.resolve(".tmp", "tests");
 
@@ -23,6 +23,45 @@ test("running without provider flags does nothing", async (t) => {
   assert.match(output.text, /nothing to sync/);
   await assert.rejects(fs.stat(path.join(homeDir, ".agents")), { code: "ENOENT" });
   await assert.rejects(fs.stat(path.join(homeDir, ".claude")), { code: "ENOENT" });
+});
+
+test("help text uses the invoked command name", async (t) => {
+  const homeDir = await tempHome(t);
+  const agentSyncOutput = createWritable();
+  const skillOrganizerOutput = createWritable();
+  const providerConfigPath = await writeProviderConfig(homeDir);
+
+  assert.equal(
+    await runCli(["--help"], {
+      commandName: "agent-sync",
+      env: { HOME: homeDir },
+      providerConfigPath,
+      stdout: agentSyncOutput,
+      stderr: createWritable(),
+    }),
+    0,
+  );
+  assert.equal(
+    await runCli(["--help"], {
+      commandName: "skill-organizer",
+      env: { HOME: homeDir },
+      providerConfigPath,
+      stdout: skillOrganizerOutput,
+      stderr: createWritable(),
+    }),
+    0,
+  );
+
+  assert.match(agentSyncOutput.text, /^Usage: agent-sync/m);
+  assert.match(skillOrganizerOutput.text, /^Usage: skill-organizer/m);
+});
+
+test("package exposes agent-sync and skill-organizer bin names", async () => {
+  const packageJson = JSON.parse(await fs.readFile("package.json", "utf8"));
+
+  assert.equal(packageJson.name, "agent-sync");
+  assert.equal(packageJson.bin["agent-sync"], "bin/agent-sync.js");
+  assert.equal(packageJson.bin["skill-organizer"], "bin/skill-organizer.js");
 });
 
 test("provider flags are loaded from config", async (t) => {
@@ -52,6 +91,53 @@ test("provider flags are loaded from config", async (t) => {
     await fs.readlink(path.join(homeDir, ".custom-agent", "skills", "tdd")),
     path.join(homeDir, ".agents", "skills", "tdd"),
   );
+});
+
+test("artifact registry syncs selected global instructions", async (t) => {
+  const homeDir = await tempHome(t);
+  const output = createWritable();
+  const providerConfigPath = await writeAgentSyncConfig(homeDir);
+
+  await fs.mkdir(path.join(homeDir, ".agents"), { recursive: true });
+  await fs.writeFile(path.join(homeDir, ".agents", "AGENTS.md"), "shared global instructions\n");
+
+  const exitCode = await runCli(["--artifact", "global-instructions", "--codex"], {
+    env: { HOME: homeDir },
+    providerConfigPath,
+    stdout: output,
+    stderr: createWritable(),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(output.text, /Codex global instructions synced: 0 imported, 1 linked, 0 replaced, 0 removed, 0 skipped/);
+  assert.equal(
+    await fs.readlink(path.join(homeDir, ".codex", "AGENTS.md")),
+    path.join(homeDir, ".agents", "AGENTS.md"),
+  );
+  await assert.rejects(fs.stat(path.join(homeDir, ".claude", "skills")), { code: "ENOENT" });
+});
+
+test("provider flag alone only syncs default skill artifacts", async (t) => {
+  const homeDir = await tempHome(t);
+  const output = createWritable();
+  const providerConfigPath = await writeAgentSyncConfig(homeDir);
+
+  await writeSkill(path.join(homeDir, ".agents", "skills"), "tdd", "source skill");
+  await fs.mkdir(path.join(homeDir, ".agents"), { recursive: true });
+  await fs.writeFile(path.join(homeDir, ".agents", "AGENTS.md"), "shared global instructions\n");
+
+  const exitCode = await runCli(["--claude-code"], {
+    env: { HOME: homeDir },
+    providerConfigPath,
+    stdout: output,
+    stderr: createWritable(),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(output.text, /Claude Code synced: 0 imported, 1 linked, 0 replaced, 0 removed, 0 skipped/);
+  assert.doesNotMatch(output.text, /global instructions/);
+  assert.equal(await fs.readlink(path.join(homeDir, ".claude", "skills", "tdd")), path.join(homeDir, ".agents", "skills", "tdd"));
+  await assert.rejects(fs.stat(path.join(homeDir, ".claude", "CLAUDE.md")), { code: "ENOENT" });
 });
 
 test("--all-providers syncs every configured provider", async (t) => {
@@ -547,6 +633,65 @@ test("dry-run reports import actions without moving or linking skills", async (t
   await assert.rejects(fs.stat(path.join(sourceDir, "qa")), { code: "ENOENT" });
 });
 
+test("links source file artifacts into a missing destination", async (t) => {
+  const workspace = await tempHome(t);
+  const sourcePath = path.join(workspace, ".agents", "AGENTS.md");
+  const destinationPath = path.join(workspace, ".codex", "AGENTS.md");
+
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.writeFile(sourcePath, "shared global instructions\n");
+
+  const result = await syncFileProvider({
+    artifact: fileArtifact(sourcePath),
+    provider: fileProvider(destinationPath, { mode: "symlink" }),
+  });
+
+  assert.deepEqual(result.actions.map((action) => action.type), ["linked"]);
+  assert.equal((await fs.lstat(destinationPath)).isSymbolicLink(), true);
+  assert.equal(await fs.readlink(destinationPath), sourcePath);
+});
+
+test("dry-run reports file artifact imports without moving or linking", async (t) => {
+  const workspace = await tempHome(t);
+  const sourcePath = path.join(workspace, ".agents", "AGENTS.md");
+  const destinationPath = path.join(workspace, ".codex", "AGENTS.md");
+
+  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+  await fs.writeFile(destinationPath, "destination-only instructions\n");
+
+  const result = await syncFileProvider({
+    artifact: fileArtifact(sourcePath),
+    provider: fileProvider(destinationPath, { mode: "symlink" }),
+    dryRun: true,
+  });
+
+  assert.deepEqual(result.actions.map((action) => action.type), ["imported"]);
+  assert.equal(await fs.readFile(destinationPath, "utf8"), "destination-only instructions\n");
+  await assert.rejects(fs.stat(sourcePath), { code: "ENOENT" });
+});
+
+test("replaces file artifact clashes with provider templates", async (t) => {
+  const workspace = await tempHome(t);
+  const sourcePath = path.join(workspace, ".agents", "AGENTS.md");
+  const destinationPath = path.join(workspace, ".claude", "CLAUDE.md");
+
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+  await fs.writeFile(sourcePath, "shared global instructions\n");
+  await fs.writeFile(destinationPath, "old claude instructions\n");
+
+  const result = await syncFileProvider({
+    artifact: fileArtifact(sourcePath),
+    provider: fileProvider(destinationPath, {
+      mode: "template",
+      template: "@~/.agents/AGENTS.md\n",
+    }),
+  });
+
+  assert.deepEqual(result.actions.map((action) => action.type), ["replaced"]);
+  assert.equal(await fs.readFile(destinationPath, "utf8"), "@~/.agents/AGENTS.md\n");
+});
+
 async function tempHome(t) {
   await fs.mkdir(TEST_TMP_ROOT, { recursive: true });
 
@@ -592,7 +737,7 @@ function provider(destinationDir) {
 }
 
 async function writeProviderConfig(homeDir, providers = defaultProviders()) {
-  const configPath = path.join(homeDir, "providers.json");
+  const configPath = path.join(homeDir, "legacy-provider-config.json");
 
   await fs.writeFile(
     configPath,
@@ -623,6 +768,74 @@ function twoProviders() {
       skillsDir: "~/.custom-agent/skills",
     },
   ];
+}
+
+async function writeAgentSyncConfig(homeDir) {
+  const configPath = path.join(homeDir, "agent-sync.json");
+
+  await fs.writeFile(
+    configPath,
+    `${JSON.stringify({
+      artifacts: [
+        {
+          id: "skills",
+          label: "skills",
+          type: "skills",
+          default: true,
+          sourceDir: "~/.agents/skills",
+          providers: defaultProviders().map((provider) => ({
+            id: provider.id,
+            flag: provider.flag,
+            label: provider.label,
+            destinationDir: provider.skillsDir,
+          })),
+        },
+        {
+          id: "global-instructions",
+          label: "global instructions",
+          type: "file",
+          sourceFile: "~/.agents/AGENTS.md",
+          providers: [
+            {
+              id: "codex",
+              flag: "--codex",
+              label: "Codex",
+              destinationFile: "~/.codex/AGENTS.md",
+              mode: "symlink",
+            },
+            {
+              id: "claude-code",
+              flag: "--claude-code",
+              label: "Claude Code",
+              destinationFile: "~/.claude/CLAUDE.md",
+              mode: "template",
+              template: "@~/.agents/AGENTS.md\n",
+            },
+          ],
+        },
+      ],
+    }, null, 2)}\n`,
+  );
+
+  return configPath;
+}
+
+function fileArtifact(sourcePath) {
+  return {
+    id: "global-instructions",
+    label: "global instructions",
+    type: "file",
+    sourceFile: sourcePath,
+  };
+}
+
+function fileProvider(destinationPath, options) {
+  return {
+    id: "test-provider",
+    label: "Test Provider",
+    destinationFile: destinationPath,
+    ...options,
+  };
 }
 
 function createWritable() {

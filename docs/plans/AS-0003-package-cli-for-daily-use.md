@@ -1,8 +1,8 @@
-# SO-0003 Package CLI For Daily Use
+# AS-0003 Package CLI For Daily Use
 
-- Ticket: SO-0003
-- Board: ~/obsidian_notes/pocock-skills-vault/projects/utilities/skill-organizer/Skill Organizer Kanban.md
-- Card: SO-0003 Package CLI For Daily Use
+- Ticket: AS-0003
+- Board: ~/obsidian_notes/pocock-skills-vault/projects/utilities/agent-sync/Agent Sync Kanban.md
+- Card: AS-0003 Package CLI For Daily Use
 - Created: 2026-06-19
 
 ## Summary
@@ -11,7 +11,7 @@ Decide how this CLI should be invoked day to day, such as a global npm link, npm
 
 ## Context
 
-The CLI entrypoint is `bin/skill-organizer.js`, and the package bin name is `skill-organizer`.
+The primary CLI entrypoint is `bin/agent-sync.js`, and the primary package bin name is `agent-sync`. The old `skill-organizer` bin remains as a compatibility alias.
 
 ## Plan
 
@@ -21,6 +21,8 @@ The CLI entrypoint is `bin/skill-organizer.js`, and the package bin name is `ski
 
 ## Verification
 
+- [ ] `agent-sync --help`
+- [ ] `agent-sync --dry-run --all-providers`
 - [ ] `skill-organizer --help`
 - [ ] `skill-organizer --dry-run --all-providers`
 

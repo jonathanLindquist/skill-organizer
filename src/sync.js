@@ -1,17 +1,44 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export async function syncProviders({ sourceDir, providers, dryRun = false, skillNames = [] }) {
+export async function syncArtifacts({ artifacts, dryRun = false, skillNames = [] }) {
   const results = [];
 
-  for (const provider of providers) {
-    results.push(await syncProvider({ sourceDir, provider, dryRun, skillNames }));
+  for (const artifact of artifacts) {
+    if (artifact.type === "skills") {
+      results.push(
+        ...(await syncProviders({
+          artifact,
+          sourceDir: artifact.sourceDir,
+          providers: artifact.providers,
+          dryRun,
+          skillNames,
+        })),
+      );
+      continue;
+    }
+
+    if (artifact.type === "file") {
+      for (const provider of artifact.providers) {
+        results.push(await syncFileProvider({ artifact, provider, dryRun }));
+      }
+    }
   }
 
   return results;
 }
 
-export async function syncProvider({ sourceDir, provider, dryRun = false, skillNames = [] }) {
+export async function syncProviders({ artifact = null, sourceDir, providers, dryRun = false, skillNames = [] }) {
+  const results = [];
+
+  for (const provider of providers) {
+    results.push(await syncProvider({ sourceDir, provider, dryRun, skillNames, artifact }));
+  }
+
+  return results;
+}
+
+export async function syncProvider({ sourceDir, provider, dryRun = false, skillNames = [], artifact = null }) {
   const actions = [];
   const destinationDir = provider.skillsDir;
   const selectedSkillNames = [...new Set(skillNames)];
@@ -124,9 +151,96 @@ export async function syncProvider({ sourceDir, provider, dryRun = false, skillN
   }
 
   return {
+    artifact,
     provider,
     sourceDir,
     destinationDir,
+    dryRun,
+    actions,
+  };
+}
+
+export async function syncFileProvider({ artifact, provider, dryRun = false }) {
+  const sourcePath = artifact.sourceFile;
+  const destinationPath = provider.destinationFile;
+  const item = artifact.id;
+  const actions = [];
+  const sourceExists = await fileExists(sourcePath);
+  const destinationExists = await pathExists(destinationPath);
+
+  if (!sourceExists && !destinationExists) {
+    actions.push({
+      type: "skipped",
+      item,
+      reason: "source and destination missing",
+    });
+
+    return fileResult({ artifact, provider, sourcePath, destinationPath, dryRun, actions });
+  }
+
+  if (!sourceExists && destinationExists) {
+    if (!dryRun) {
+      await ensureDirectory(path.dirname(sourcePath), { dryRun });
+      await moveFileToSource(destinationPath, sourcePath);
+      await replaceDestinationWithManagedFile({ sourcePath, destinationPath, provider });
+    }
+
+    actions.push({
+      type: "imported",
+      item,
+      from: destinationPath,
+      to: sourcePath,
+    });
+
+    return fileResult({ artifact, provider, sourcePath, destinationPath, dryRun, actions });
+  }
+
+  if (destinationExists && (await isManagedFileDestination({ sourcePath, destinationPath, provider }))) {
+    actions.push({
+      type: "skipped",
+      item,
+      reason: "destination already matches source",
+      path: destinationPath,
+    });
+
+    return fileResult({ artifact, provider, sourcePath, destinationPath, dryRun, actions });
+  }
+
+  if (destinationExists) {
+    if (!dryRun) {
+      await replaceDestinationWithManagedFile({ sourcePath, destinationPath, provider });
+    }
+
+    actions.push({
+      type: "replaced",
+      item,
+      from: sourcePath,
+      to: destinationPath,
+    });
+
+    return fileResult({ artifact, provider, sourcePath, destinationPath, dryRun, actions });
+  }
+
+  if (!dryRun) {
+    await replaceDestinationWithManagedFile({ sourcePath, destinationPath, provider });
+  }
+
+  actions.push({
+    type: "linked",
+    item,
+    from: sourcePath,
+    to: destinationPath,
+  });
+
+  return fileResult({ artifact, provider, sourcePath, destinationPath, dryRun, actions });
+}
+
+function fileResult({ artifact, provider, sourcePath, destinationPath, dryRun, actions }) {
+  return {
+    artifact,
+    provider,
+    sourcePath,
+    destinationPath,
     dryRun,
     actions,
   };
@@ -198,6 +312,27 @@ async function moveSkillToSource(entry, destinationPath, sourcePath) {
   });
 }
 
+async function moveFileToSource(destinationPath, sourcePath) {
+  const destinationStat = await fs.lstat(destinationPath);
+
+  if (!destinationStat.isSymbolicLink()) {
+    await moveEntry(destinationPath, sourcePath);
+    return;
+  }
+
+  const targetPath = await fs.realpath(destinationPath);
+  const targetStat = await fs.stat(targetPath);
+
+  if (!targetStat.isFile()) {
+    throw new Error(`Destination symlink does not point to a file: ${destinationPath}`);
+  }
+
+  await moveEntry(targetPath, sourcePath);
+  await fs.rm(destinationPath, {
+    force: true,
+  });
+}
+
 async function moveEntry(fromPath, toPath) {
   try {
     await fs.rename(fromPath, toPath);
@@ -222,6 +357,18 @@ async function replaceWithSourceLink(sourcePath, destinationPath) {
   await linkSkill(sourcePath, destinationPath);
 }
 
+async function replaceDestinationWithManagedFile({ sourcePath, destinationPath, provider }) {
+  await removeEntry(destinationPath);
+  await ensureDirectory(path.dirname(destinationPath), { dryRun: false });
+
+  if (provider.mode === "symlink") {
+    await fs.symlink(sourcePath, destinationPath, "file");
+    return;
+  }
+
+  await fs.writeFile(destinationPath, provider.template);
+}
+
 async function removeEntry(entryPath) {
   await fs.rm(entryPath, {
     recursive: true,
@@ -243,6 +390,53 @@ async function isSymlinkToSource(destinationPath, sourcePath) {
     return resolvedTarget === sourcePath;
   } catch (error) {
     if (error.code === "ENOENT" || error.code === "EINVAL") {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function isManagedFileDestination({ sourcePath, destinationPath, provider }) {
+  if (provider.mode === "symlink") {
+    return isSymlinkToSource(destinationPath, sourcePath);
+  }
+
+  try {
+    const destinationStat = await fs.lstat(destinationPath);
+
+    if (!destinationStat.isFile()) {
+      return false;
+    }
+
+    return (await fs.readFile(destinationPath, "utf8")) === provider.template;
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "EINVAL") {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function pathExists(inputPath) {
+  try {
+    await fs.lstat(inputPath);
+    return true;
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function fileExists(inputPath) {
+  try {
+    return (await fs.stat(inputPath)).isFile();
+  } catch (error) {
+    if (error.code === "ENOENT") {
       return false;
     }
 

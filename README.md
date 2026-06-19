@@ -1,18 +1,18 @@
-# skill-organizer
+# agent-sync
 
-`skill-organizer` keeps `~/.agents/skills` as the source of truth for agent skills and creates per-skill symlinks into provider-specific skill directories.
+`agent-sync` keeps shared agent artifacts in `~/.agents` as the source of truth and syncs provider-specific files or directories into the harnesses that consume them.
 
-The default command intentionally does nothing. You must pass a provider flag for every destination you want to sync.
+The default command intentionally does nothing. You must pass a provider flag for every destination you want to sync. For compatibility, the old `skill-organizer` command still runs the same CLI without a deprecation warning.
 
 ```bash
-skill-organizer --claude-code
-skill-organizer --claude-code --skill tdd
-skill-organizer --all-providers
+agent-sync --claude-code
+agent-sync --claude-code --skill tdd
+agent-sync --all-providers
 ```
 
 ## Behavior
 
-For each selected provider:
+By default, selected provider flags sync only the default `skills` artifact:
 
 - source skills in `~/.agents/skills` are symlinked into the provider destination
 - existing destination entries with matching source skill names are replaced with symlinks to the source skill
@@ -27,41 +27,72 @@ Claude Code is the first supported provider:
 ~/.claude/skills/<skill-name> -> ~/.agents/skills/<skill-name>
 ```
 
+Non-default artifacts must be selected explicitly. The first non-skill artifact is `global-instructions`:
+
+```text
+~/.agents/AGENTS.md
+~/.codex/AGENTS.md -> ~/.agents/AGENTS.md
+~/.claude/CLAUDE.md contains @~/.agents/AGENTS.md
+```
+
+Claude Code reads `CLAUDE.md`, not `AGENTS.md`, so its global instruction sync uses a thin import wrapper instead of naming the provider file `AGENTS.md`.
+
 ## Usage
 
 ```bash
 npm test
 npm run lint
-node bin/skill-organizer.js --help
-node bin/skill-organizer.js --dry-run --claude-code
-node bin/skill-organizer.js --dry-run --claude-code --skill tdd
-node bin/skill-organizer.js --claude-code
-node bin/skill-organizer.js --all-providers
+node bin/agent-sync.js --help
+node bin/agent-sync.js --dry-run --claude-code
+node bin/agent-sync.js --dry-run --claude-code --skill tdd
+node bin/agent-sync.js --dry-run --artifact global-instructions --codex
+node bin/agent-sync.js --dry-run --artifact global-instructions --claude-code
+node bin/agent-sync.js --all-providers
 ```
 
 Use `--skill <name>` to limit a sync to one skill directory name. The option can be repeated when you need a small explicit set, and it works with provider flags or `--all-providers`.
 
-## Adding Providers
+Use `--artifact <id>` to opt into a non-default artifact group. Use `--all-artifacts` when you intentionally want every configured artifact group for the selected providers.
 
-Add a provider entry in `providers.json`:
+## Configuration
+
+Artifact groups and provider destinations live in `agent-sync.json`:
 
 ```json
 {
-  "providers": [
+  "artifacts": [
     {
-      "id": "claude-code",
-      "flag": "--claude-code",
-      "label": "Claude Code",
-      "skillsDir": "~/.claude/skills"
+      "id": "skills",
+      "label": "skills",
+      "type": "skills",
+      "default": true,
+      "sourceDir": "~/.agents/skills",
+      "providers": [
+        {
+          "id": "claude-code",
+          "flag": "--claude-code",
+          "label": "Claude Code",
+          "destinationDir": "~/.claude/skills"
+        }
+      ]
     },
     {
-      "id": "new-provider",
-      "flag": "--new-provider",
-      "label": "New Provider",
-      "skillsDir": "~/.new-provider/skills"
+      "id": "global-instructions",
+      "label": "global instructions",
+      "type": "file",
+      "sourceFile": "~/.agents/AGENTS.md",
+      "providers": [
+        {
+          "id": "codex",
+          "flag": "--codex",
+          "label": "Codex",
+          "destinationFile": "~/.codex/AGENTS.md",
+          "mode": "symlink"
+        }
+      ]
     }
   ]
 }
 ```
 
-The CLI loads provider flags from `providers.json` at startup, so updating that file is enough for providers that use the same per-skill directory model.
+The CLI loads provider flags from `agent-sync.json` at startup. Provider flags are shared across artifacts, so `--claude-code` can target skills by default and global instructions only when `--artifact global-instructions` or `--all-artifacts` is present.

@@ -1,17 +1,30 @@
-import { getHomeDir, loadProviders, providerWithResolvedPath, sourceSkillsDir } from "./providers.js";
-import { syncProviders } from "./sync.js";
+import { artifactProviderSummaries, configWithResolvedPaths, getHomeDir, loadConfig } from "./providers.js";
+import { syncArtifacts } from "./sync.js";
 
 const ALL_PROVIDERS_FLAG = "--all-providers";
+const ALL_ARTIFACTS_FLAG = "--all-artifacts";
+const ARTIFACT_FLAG = "--artifact";
 const SKILL_FLAG = "--skill";
 const ACTION_DISPLAY_ORDER = ["imported", "linked", "replaced", "removed", "skipped"];
 const BOLD_ACTION_TYPES = new Set(["imported", "linked", "replaced"]);
 
-export async function runCli(argv, { env = process.env, stdout = process.stdout, stderr = process.stderr, providerConfigPath } = {}) {
-  const providers = await loadProviders(providerConfigPath);
-  const parsed = parseArgs(argv, providers);
+export async function runCli(
+  argv,
+  {
+    env = process.env,
+    stdout = process.stdout,
+    stderr = process.stderr,
+    providerConfigPath,
+    configPath = providerConfigPath,
+    commandName = "agent-sync",
+  } = {},
+) {
+  const config = await loadConfig(configPath);
+  const providerSummaries = artifactProviderSummaries(config);
+  const parsed = parseArgs(argv, config, providerSummaries);
 
   if (parsed.help) {
-    stdout.write(helpText(providers));
+    stdout.write(helpText(config, providerSummaries, commandName));
     return 0;
   }
 
@@ -20,7 +33,7 @@ export async function runCli(argv, { env = process.env, stdout = process.stdout,
       stderr.write(`${error}\n`);
     }
     stderr.write("\n");
-    stderr.write(helpText(providers));
+    stderr.write(helpText(config, providerSummaries, commandName));
     return 1;
   }
 
@@ -30,16 +43,25 @@ export async function runCli(argv, { env = process.env, stdout = process.stdout,
   }
 
   const homeDir = getHomeDir(env);
+  const resolvedConfig = configWithResolvedPaths(config, homeDir);
   const selectedProviderIds = parsed.allProviders
-    ? providers.map((provider) => provider.id)
+    ? providerSummaries.map((provider) => provider.id)
     : parsed.selectedProviderIds;
-  const selectedProviders = providers
-    .filter((provider) => selectedProviderIds.includes(provider.id))
-    .map((provider) => providerWithResolvedPath(provider, homeDir));
+  const selectedArtifactIds = parsed.allArtifacts
+    ? resolvedConfig.artifacts.map((artifact) => artifact.id)
+    : parsed.selectedArtifactIds;
+  const selectedProviderIdSet = new Set(selectedProviderIds);
+  const selectedArtifactIdSet = new Set(selectedArtifactIds);
+  const selectedArtifacts = resolvedConfig.artifacts
+    .filter((artifact) => selectedArtifactIdSet.has(artifact.id))
+    .map((artifact) => ({
+      ...artifact,
+      providers: artifact.providers.filter((provider) => selectedProviderIdSet.has(provider.id)),
+    }))
+    .filter((artifact) => artifact.providers.length > 0);
 
-  const results = await syncProviders({
-    sourceDir: sourceSkillsDir(homeDir),
-    providers: selectedProviders,
+  const results = await syncArtifacts({
+    artifacts: selectedArtifacts,
     dryRun: parsed.dryRun,
     skillNames: parsed.skillNames,
   });
@@ -51,11 +73,13 @@ export async function runCli(argv, { env = process.env, stdout = process.stdout,
   return 0;
 }
 
-function parseArgs(argv, providers) {
+function parseArgs(argv, config, providerSummaries) {
   const selectedProviderIds = [];
+  const selectedArtifactIds = [];
   const skillNames = [];
   const errors = [];
   let allProviders = false;
+  let allArtifacts = false;
   let dryRun = false;
   let help = false;
 
@@ -69,6 +93,11 @@ function parseArgs(argv, providers) {
 
     if (arg === ALL_PROVIDERS_FLAG) {
       allProviders = true;
+      continue;
+    }
+
+    if (arg === ALL_ARTIFACTS_FLAG) {
+      allArtifacts = true;
       continue;
     }
 
@@ -90,12 +119,30 @@ function parseArgs(argv, providers) {
       continue;
     }
 
+    if (arg === ARTIFACT_FLAG) {
+      const artifactId = argv[index + 1];
+
+      if (!artifactId || artifactId.startsWith("--")) {
+        errors.push(`${ARTIFACT_FLAG} requires an artifact id`);
+        continue;
+      }
+
+      addArtifactId(artifactId, config, { errors, selectedArtifactIds });
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith(`${ARTIFACT_FLAG}=`)) {
+      addArtifactId(arg.slice(`${ARTIFACT_FLAG}=`.length), config, { errors, selectedArtifactIds });
+      continue;
+    }
+
     if (arg.startsWith(`${SKILL_FLAG}=`)) {
       addSkillName(arg.slice(`${SKILL_FLAG}=`.length), { errors, skillNames });
       continue;
     }
 
-    const provider = providers.find((candidate) => candidate.flag === arg);
+    const provider = providerSummaries.find((candidate) => candidate.flag === arg);
 
     if (provider) {
       selectedProviderIds.push(provider.id);
@@ -106,10 +153,12 @@ function parseArgs(argv, providers) {
   }
 
   return {
+    allArtifacts,
     allProviders,
     dryRun,
     errors,
     help,
+    selectedArtifactIds: [...new Set(selectedArtifactIds.length > 0 ? selectedArtifactIds : defaultArtifactIds(config))],
     selectedProviderIds: [...new Set(selectedProviderIds)],
     skillNames: [...new Set(skillNames)],
   };
@@ -131,12 +180,35 @@ function addSkillName(value, { errors, skillNames }) {
   skillNames.push(skillName);
 }
 
+function addArtifactId(value, config, { errors, selectedArtifactIds }) {
+  const artifactId = value.trim();
+
+  if (!artifactId) {
+    errors.push(`${ARTIFACT_FLAG} requires an artifact id`);
+    return;
+  }
+
+  if (!config.artifacts.some((artifact) => artifact.id === artifactId)) {
+    errors.push(`Unknown artifact: ${artifactId}`);
+    return;
+  }
+
+  selectedArtifactIds.push(artifactId);
+}
+
+function defaultArtifactIds(config) {
+  return config.artifacts.filter((artifact) => artifact.default).map((artifact) => artifact.id);
+}
+
 function writeProviderSummary(stdout, result) {
   const counts = countActions(result.actions);
   const mode = result.dryRun ? "dry run" : "synced";
+  const subject = result.artifact && result.artifact.type !== "skills"
+    ? `${result.provider.label} ${result.artifact.label}`
+    : result.provider.label;
 
   stdout.write(
-    `${result.provider.label} ${mode}: ${counts.imported} imported, ${counts.linked} linked, ${counts.replaced} replaced, ${counts.removed} removed, ${counts.skipped} skipped.\n`,
+    `${subject} ${mode}: ${counts.imported} imported, ${counts.linked} linked, ${counts.replaced} replaced, ${counts.removed} removed, ${counts.skipped} skipped.\n`,
   );
 
   let previousActionType;
@@ -149,29 +221,33 @@ function writeProviderSummary(stdout, result) {
     previousActionType = action.type;
 
     if (action.type === "imported") {
-      stdout.write(`  ${formatActionType(action.type)} ${action.skill}: ${action.from} -> ${action.to}\n`);
+      stdout.write(`  ${formatActionType(action.type)} ${actionName(action)}: ${action.from} -> ${action.to}\n`);
       continue;
     }
 
     if (action.type === "linked") {
-      stdout.write(`  ${formatActionType(action.type)} ${action.skill}: ${action.to} -> ${action.from}\n`);
+      stdout.write(`  ${formatActionType(action.type)} ${actionName(action)}: ${action.to} -> ${action.from}\n`);
       continue;
     }
 
     if (action.type === "replaced") {
-      stdout.write(`  ${formatActionType(action.type)} ${action.skill}: ${action.to} -> ${action.from}\n`);
+      stdout.write(`  ${formatActionType(action.type)} ${actionName(action)}: ${action.to} -> ${action.from}\n`);
       continue;
     }
 
     if (action.type === "removed") {
-      stdout.write(`  removed ${action.skill}: ${action.path} (${action.reason})\n`);
+      stdout.write(`  removed ${actionName(action)}: ${action.path} (${action.reason})\n`);
       continue;
     }
 
     if (action.type === "skipped") {
-      stdout.write(`  skipped ${action.skill}: ${action.reason}\n`);
+      stdout.write(`  skipped ${actionName(action)}: ${action.reason}\n`);
     }
   }
+}
+
+function actionName(action) {
+  return action.skill ?? action.item;
 }
 
 function formatActionType(type) {
@@ -190,7 +266,7 @@ function sortActionsForDisplay(actions) {
       return typeComparison;
     }
 
-    return left.skill.localeCompare(right.skill);
+    return actionName(left).localeCompare(actionName(right));
   });
 }
 
@@ -210,25 +286,39 @@ function countActions(actions) {
   };
 }
 
-function helpText(providers) {
-  const providerFlags = providers
-    .map((provider) => `  ${provider.flag.padEnd(18)} sync ${provider.label} skills at ${provider.skillsDir}`)
+function helpText(config, providerSummaries, commandName) {
+  const providerFlags = providerSummaries
+    .map((provider) => {
+      const artifacts = [...provider.artifactLabels].join(", ");
+      return `  ${provider.flag.padEnd(18)} sync ${provider.label} artifacts (${artifacts})`;
+    })
+    .join("\n");
+  const artifactLines = config.artifacts
+    .map((artifact) => {
+      const defaultLabel = artifact.default ? " (default)" : "";
+      return `  ${artifact.id.padEnd(18)} ${artifact.label}${defaultLabel}`;
+    })
     .join("\n");
 
-  return `Usage: skill-organizer [provider flags] [options]
+  return `Usage: ${commandName} [provider flags] [options]
 
-By default, skill-organizer does nothing. Pass one provider flag for each target you want to sync.
+By default, ${commandName} syncs only default artifacts. Pass one provider flag for each target you want to sync.
 
 Provider flags:
   ${ALL_PROVIDERS_FLAG.padEnd(18)} sync every configured provider
 ${providerFlags}
 
 Options:
-  --skill <name>      sync only this skill name; can be repeated
-  --dry-run            show the actions without changing files
-  -h, --help           show this help
+  ${ALL_ARTIFACTS_FLAG.padEnd(18)} sync every configured artifact
+  ${ARTIFACT_FLAG.padEnd(18)} sync one artifact id; can be repeated
+  ${SKILL_FLAG.padEnd(18)} sync only this skill name; can be repeated
+  --dry-run          show the actions without changing files
+  -h, --help         show this help
 
-Source of truth:
+Artifacts:
+${artifactLines}
+
+Default source of truth:
   ~/.agents/skills
 `;
 }

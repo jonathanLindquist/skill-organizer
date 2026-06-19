@@ -5,14 +5,14 @@ Issues, implementation tickets, and project task state for this repo live in an 
 ## Board
 
 - Vault: `~/obsidian_notes/pocock-skills-vault`
-- Board: `~/obsidian_notes/pocock-skills-vault/projects/utilities/skill-organizer/Skill Organizer Kanban.md`
+- Board: `~/obsidian_notes/pocock-skills-vault/projects/utilities/agent-sync/Agent Sync Kanban.md`
 - Template: `~/obsidian_notes/pocock-skills-vault/Z - Templates/Kanban Template.md`
-- Project path: `~/projects/utilities/skill-organizer`
+- Project path: `~/projects/utilities/agent-sync`
 - Tool config: `docs/agents/project-workflow.json`
 - Ticket sequence: `docs/agents/ticket-sequence.json`
 - Execution plans: `docs/plans/*.md`
 
-The board path mirrors the project path relative to the home directory: `projects/utilities/skill-organizer`.
+The board path mirrors the project path relative to the home directory: `projects/utilities/agent-sync`.
 
 ## Lanes
 
@@ -37,7 +37,7 @@ Each ticket card should stay short and include:
 Use this shape:
 
 ```markdown
-- [ ] # <span style="color: #77ccd5">SO-0002 Ticket title</span>
+- [ ] # <span style="color: #77ccd5">AS-0002 Ticket title</span>
 
     ## Description
 
@@ -47,8 +47,8 @@ Use this shape:
 
     ## Implementation Details
 
-    - Ticket: SO-0002
-    - Plan: docs/plans/SO-0002-ticket-title.md
+    - Ticket: AS-0002
+    - Plan: docs/plans/AS-0002-ticket-title.md
 ```
 
 For implementation work, record longform context, plans, and verification notes in the linked `docs/plans/*.md` file. Keep the card scannable.

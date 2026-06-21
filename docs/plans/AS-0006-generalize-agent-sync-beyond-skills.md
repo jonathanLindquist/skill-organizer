@@ -1,7 +1,7 @@
 # AS-0006 Generalize agent-sync beyond skills
 
 - Ticket: AS-0006
-- Board: derived from `$PROJECT_WORKFLOW_OBSIDIAN_VAULT` and `docs/agents/project-workflow.json`
+- Board: derived from `$PROJECT_WORKFLOW_OBSIDIAN_VAULT` and this repository's path relative to `$HOME`
 - Card: AS-0006 Generalize agent-sync beyond skills
 - Created: 2026-06-19
 

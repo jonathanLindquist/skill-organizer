@@ -1,7 +1,7 @@
 # AS-0005 Rename skill-organizer to agent-sync
 
 - Ticket: AS-0005
-- Board: derived from `$PROJECT_WORKFLOW_OBSIDIAN_VAULT` and `docs/agents/project-workflow.json`
+- Board: derived from `$PROJECT_WORKFLOW_OBSIDIAN_VAULT` and this repository's path relative to `$HOME`
 - Card: AS-0005 Rename skill-organizer to agent-sync
 - Created: 2026-06-19
 
@@ -21,16 +21,16 @@ This rename happens after `v0.1.0` is tagged so consumers can pin the old projec
 - [x] Rename the legacy provider config file to `agent-sync.json`
 - [x] Rewrite repo docs and plan filenames to the `AS-*` ticket namespace
 - [x] Update the Obsidian board path and project tag to `agent-sync`
-- [ ] Rename the GitHub repository to `agent-sync`
-- [ ] Rename the active local checkout directory to `agent-sync`
+- [x] Rename the GitHub repository to `agent-sync`
+- [x] Rename the active local checkout directory to `agent-sync`
 
 ## Acceptance Criteria
 
 - [x] `node bin/agent-sync.js --help` works
 - [x] `node bin/skill-organizer.js --help` works
 - [x] New tickets use the `AS` prefix with next number `7`
-- [ ] GitHub remote points at the renamed repository
-- [ ] The active checkout directory is `~/projects/utilities/agent-sync`
+- [x] GitHub remote points at the renamed repository
+- [x] The active checkout directory is `~/projects/utilities/agent-sync`
 
 ## Verification
 
@@ -38,8 +38,12 @@ This rename happens after `v0.1.0` is tagged so consumers can pin the old projec
 - [x] `npm test`
 - [x] `node bin/agent-sync.js --help`
 - [x] `node bin/skill-organizer.js --help`
-- [ ] `git remote -v`
+- [x] `git remote -v`
 
 ## Outcome
 
-Code, docs, committed tracker files, and the Obsidian board were migrated to `agent-sync` / `AS-*`. GitHub repository rename and local checkout directory rename remain external follow-ups because GitHub CLI is unauthenticated and renaming the active workspace would invalidate the current session path.
+Code, docs, committed tracker files, the Obsidian board, GitHub remote, and active checkout directory were migrated to `agent-sync` / `AS-*`. The old `skill-organizer` executable remains available as a compatibility alias.
+
+## Completion Notes
+
+- 2026-06-21: Confirmed the renamed GitHub remote and active checkout path, then closed the rename ticket under the current ticket closeout workflow.

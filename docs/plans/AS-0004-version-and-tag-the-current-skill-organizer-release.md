@@ -1,7 +1,7 @@
 # AS-0004 Version and tag the current skill-organizer release
 
 - Ticket: AS-0004
-- Board: derived from `$PROJECT_WORKFLOW_OBSIDIAN_VAULT` and `docs/agents/project-workflow.json`
+- Board: derived from `$PROJECT_WORKFLOW_OBSIDIAN_VAULT` and this repository's path relative to `$HOME`
 - Card: AS-0004 Version and tag the current skill-organizer release
 - Created: 2026-06-19
 

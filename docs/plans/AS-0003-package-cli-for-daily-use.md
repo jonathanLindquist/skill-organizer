@@ -1,7 +1,7 @@
 # AS-0003 Package CLI For Daily Use
 
 - Ticket: AS-0003
-- Board: ~/obsidian_notes/pocock-skills-vault/projects/utilities/agent-sync/Agent Sync Kanban.md
+- Board: derived from `$PROJECT_WORKFLOW_OBSIDIAN_VAULT` and this repository's path relative to `$HOME`
 - Card: AS-0003 Package CLI For Daily Use
 - Created: 2026-06-19
 
@@ -18,6 +18,12 @@ The primary CLI entrypoint is `bin/agent-sync.js`, and the primary package bin n
 - [ ] Pick the preferred invocation path
 - [ ] Document the chosen setup in `README.md`
 - [ ] Verify the command from outside the project directory
+
+## Acceptance Criteria
+
+- [ ] The preferred daily invocation path is chosen and documented in `README.md`
+- [ ] `agent-sync` works from outside the project directory
+- [ ] The `skill-organizer` compatibility alias still works from outside the project directory
 
 ## Verification
 

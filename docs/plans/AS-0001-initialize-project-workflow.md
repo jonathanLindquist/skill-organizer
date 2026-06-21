@@ -1,7 +1,7 @@
 # AS-0001 Initialize Project Workflow
 
 - Ticket: AS-0001
-- Board: ~/obsidian_notes/pocock-skills-vault/projects/utilities/agent-sync/Agent Sync Kanban.md
+- Board: derived from `$PROJECT_WORKFLOW_OBSIDIAN_VAULT` and this repository's path relative to `$HOME`
 - Card: AS-0001 Initialize Project Workflow
 - Created: 2026-06-19
 
@@ -29,9 +29,14 @@ This project uses an Obsidian Kanban board for visible ticket state and stores l
 - [x] Board path mirrors the project path relative to home
 - [x] Ticket sequence state is initialized
 - [x] Bootstrap card links to this plan
+- [x] Generated ticket workflow includes deterministic closeout rules
 - [x] Triage tags are Obsidian tags
 - [x] Kanban tag colors are present in board/template settings
 
 ## Outcome
 
 Project workflow initialized.
+
+## Completion Notes
+
+- 2026-06-21: Refreshed project workflow to the current setup-project-workflow generated shape, including repo-local Kanban template, workflow config, deterministic ticket closeout rules, and board tag-color settings.

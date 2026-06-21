@@ -1,7 +1,7 @@
 # AS-0002 Add More Providers
 
 - Ticket: AS-0002
-- Board: ~/obsidian_notes/pocock-skills-vault/projects/utilities/agent-sync/Agent Sync Kanban.md
+- Board: derived from `$PROJECT_WORKFLOW_OBSIDIAN_VAULT` and this repository's path relative to `$HOME`
 - Card: AS-0002 Add More Providers
 - Created: 2026-06-19
 
@@ -26,10 +26,17 @@ Current project facts:
 - [ ] Run `node bin/agent-sync.js --help`
 - [ ] Add or update tests if the provider uses a different directory model
 
+## Acceptance Criteria
+
+- [ ] The new provider is configured in `agent-sync.json`
+- [ ] CLI help exposes the new provider flag
+- [ ] Tests cover any provider behavior that differs from the existing per-skill directory model
+
 ## Verification
 
 - [ ] `npm run lint`
 - [ ] `npm test`
+- [ ] `node bin/agent-sync.js --help`
 
 ## Outcome
 

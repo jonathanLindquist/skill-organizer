@@ -1,6 +1,8 @@
 {
-  "planDir": "docs/plans",
-  "ticketSequencePath": "docs/agents/ticket-sequence.json",
+  "provider": "obsidian-kanban",
+  "vaultEnvVar": "PROJECT_WORKFLOW_OBSIDIAN_VAULT",
   "boardPathStrategy": "home-relative-project-path",
-  "vaultEnvVar": "PROJECT_WORKFLOW_OBSIDIAN_VAULT"
+  "kanbanTemplatePath": "docs/agents/kanban-template.md",
+  "planDir": "docs/plans",
+  "ticketSequencePath": "docs/agents/ticket-sequence.json"
 }
